@@ -1,13 +1,19 @@
 package com.elyeproj.wikisearchcount
 
-import androidx.appcompat.app.AppCompatActivity
+import android.os.AsyncTask
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import io.reactivex.android.schedulers.AndroidSchedulers
 import io.reactivex.disposables.Disposable
 import io.reactivex.schedulers.Schedulers
-import kotlinx.android.synthetic.main.activity_main.*
+import kotlinx.android.synthetic.main.activity_main.btn_search_defer
+import kotlinx.android.synthetic.main.activity_main.btn_search_enqueue
+import kotlinx.android.synthetic.main.activity_main.btn_search_execute
+import kotlinx.android.synthetic.main.activity_main.btn_search_rx
+import kotlinx.android.synthetic.main.activity_main.btn_search_suspend
+import kotlinx.android.synthetic.main.activity_main.edit_search
+import kotlinx.android.synthetic.main.activity_main.txt_search_result
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -23,6 +29,10 @@ class MainActivity : AppCompatActivity() {
 
     private val dispatcherIoScope = CoroutineScope(Dispatchers.IO)
 
+    private var call: Call<Model.Result>? = null
+
+    private var myAsyncTasks: MyAsyncTask? = null
+
     private val wikiApiServe by lazy {
         WikiApiService.create()
     }
@@ -31,9 +41,15 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        btn_search_origin.setOnClickListener {
+        btn_search_execute.setOnClickListener {
             if (edit_search.text.toString().isNotEmpty()) {
-                beginSearchOrigin(edit_search.text.toString())
+                beginSearchExecute(edit_search.text.toString())
+            }
+        }
+
+        btn_search_enqueue.setOnClickListener {
+            if (edit_search.text.toString().isNotEmpty()) {
+                beginSearchEnqueue(edit_search.text.toString())
             }
         }
 
@@ -56,23 +72,70 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun beginSearchOrigin(searchString: String) {
-         wikiApiServe.hitCountCheckCall("query", "json", "search", searchString).enqueue(
-             object : Callback<Model.Result> {
-                 override fun onFailure(call: Call<Model.Result>, t: Throwable) {
-                     Toast.makeText(this@MainActivity, t.message, Toast.LENGTH_SHORT).show()
-                 }
+    class MyAsyncTask(
+        private val doInBackground: () -> MyResult?,
+        private val onPostExecuteSuccess: (result: Model.Result) -> Unit,
+        private val onPostExecuteFailure: (result: String?) -> Unit
+    ) : AsyncTask<String?, Void?, MyAsyncTask.MyResult>() {
 
-                 override fun onResponse(call: Call<Model.Result>, response: Response<Model.Result>) {
-                     if (response.isSuccessful) {
-                         response.body()?.let {
-                             txt_search_result.text = "${it.query.searchinfo.totalhits} result found"
-                             return
-                         }
-                     }
-                     Toast.makeText(this@MainActivity, "${response.code()}:${response.message()}", Toast.LENGTH_SHORT).show()
-                 }
-             })
+        data class MyResult(val result: Model.Result? = null, val error: String? = null)
+
+        override fun doInBackground(vararg params: String?): MyResult? {
+            return doInBackground.invoke()
+        }
+
+        override fun onPostExecute(result: MyResult) {
+            result.result?.let {
+                onPostExecuteSuccess.invoke(it)
+            } ?: onPostExecuteFailure(result.error)
+        }
+    }
+
+    private fun beginSearchExecute(searchString: String) {
+        myAsyncTasks = MyAsyncTask({
+            call = wikiApiServe.hitCountCheckCall(
+                "query", "json", "search", searchString)
+            call?.let {
+                try {
+                    val response = it.execute()
+                    if (response.isSuccessful) {
+                        response.body()?.let { result ->
+                            MyAsyncTask.MyResult(result = result)
+                        }
+                    } else {
+                        MyAsyncTask.MyResult(error = "${response.code()}:${response.message()}")
+                    }
+                } catch (e: Exception) {
+                    MyAsyncTask.MyResult(error = e.message)
+                }
+            }
+        }, { result ->
+            txt_search_result.text = "${result.query.searchinfo.totalhits} result found"
+        }, { error ->
+            Toast.makeText(this@MainActivity, error ?: "Unknown Error", Toast.LENGTH_SHORT).show()
+        })
+
+        myAsyncTasks?.execute()
+    }
+
+    private fun beginSearchEnqueue(searchString: String) {
+        call = wikiApiServe.hitCountCheckCall("query", "json", "search", searchString)
+        call?.enqueue(
+            object : Callback<Model.Result> {
+                override fun onFailure(call: Call<Model.Result>, t: Throwable) {
+                    Toast.makeText(this@MainActivity, t.message, Toast.LENGTH_SHORT).show()
+                }
+
+                override fun onResponse(call: Call<Model.Result>, response: Response<Model.Result>) {
+                    if (response.isSuccessful) {
+                        response.body()?.let {
+                            txt_search_result.text = "${it.query.searchinfo.totalhits} result found"
+                            return
+                        }
+                    }
+                    Toast.makeText(this@MainActivity, "${response.code()}:${response.message()}", Toast.LENGTH_SHORT).show()
+                }
+            })
     }
 
     private fun beginSearchSuspend(searchString: String) {
@@ -120,5 +183,7 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
         disposable?.dispose()
         dispatcherIoScope.cancel()
+        call?.cancel()
+        myAsyncTasks?.cancel(true)
     }
 }

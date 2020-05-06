@@ -15,28 +15,34 @@
         android:textAlignment="center" />
 
     <Button
-        android:id="@+id/btn_search_origin"
+        android:id="@+id/btn_search_execute"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/button_search" />
+        android:text="Check Search Count Execute" />
+
+    <Button
+        android:id="@+id/btn_search_enqueue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Check Search Count Enqueue" />
 
     <Button
         android:id="@+id/btn_search_rx"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/button_search" />
+        android:text="Check Search Count Rx Single" />
 
     <Button
         android:id="@+id/btn_search_suspend"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/button_search" />
+        android:text="Check Search Count Coroutine Defer" />
 
     <Button
         android:id="@+id/btn_search_defer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/button_search" />
+        android:text="Check Search Count Coroutine Suspend" />
 
     <TextView
         android:id="@+id/txt_search_result"
