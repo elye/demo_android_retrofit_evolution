@@ -1,7 +1,10 @@
 package com.elyeproj.wikisearchcount
 
+import android.app.Activity
+import android.content.Context
 import android.os.AsyncTask
 import android.os.Bundle
+import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import io.reactivex.android.schedulers.AndroidSchedulers
@@ -108,12 +111,9 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) {
                     MyAsyncTask.MyResult(error = e.message)
                 }
-            }
-        }, { result ->
-            txt_search_result.text = "${result.query.searchinfo.totalhits} result found"
-        }, { error ->
-            Toast.makeText(this@MainActivity, error ?: "Unknown Error", Toast.LENGTH_SHORT).show()
-        })
+            } },
+            { result -> try { displayResult(result) } catch (e:java.lang.Exception) { toastError(e.message)} },
+            { error -> toastError(error) })
 
         myAsyncTasks?.execute()
     }
@@ -122,18 +122,20 @@ class MainActivity : AppCompatActivity() {
         call = wikiApiServe.hitCountCheckCall("query", "json", "search", searchString)
         call?.enqueue(
             object : Callback<Model.Result> {
-                override fun onFailure(call: Call<Model.Result>, t: Throwable) {
-                    Toast.makeText(this@MainActivity, t.message, Toast.LENGTH_SHORT).show()
-                }
+                override fun onFailure(call: Call<Model.Result>, t: Throwable) { toastError(t.message) }
 
                 override fun onResponse(call: Call<Model.Result>, response: Response<Model.Result>) {
                     if (response.isSuccessful) {
                         response.body()?.let {
-                            txt_search_result.text = "${it.query.searchinfo.totalhits} result found"
-                            return
-                        }
+                            try {
+                                displayResult(it)
+                            } catch (e: Exception) {
+                                toastError(e.message)
+                            }
+                        } ?: toastError()
+                    } else {
+                        toastError("${response.code()}:${response.message()}")
                     }
-                    Toast.makeText(this@MainActivity, "${response.code()}:${response.message()}", Toast.LENGTH_SHORT).show()
                 }
             })
     }
@@ -143,11 +145,11 @@ class MainActivity : AppCompatActivity() {
             try {
                 val result = wikiApiServe.hitCountCheckSuspend("query", "json", "search", searchString)
                 withContext(Dispatchers.Main) {
-                    txt_search_result.text = "${result.query.searchinfo.totalhits} result found"
+                    displayResult(result)
                 }
             } catch (exception: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, exception.message, Toast.LENGTH_SHORT).show()
+                    toastError(exception.message)
                 }
             }
         }
@@ -159,11 +161,11 @@ class MainActivity : AppCompatActivity() {
             try {
                 val result = deferFetch.await()
                 withContext(Dispatchers.Main) {
-                    txt_search_result.text = "${result.query.searchinfo.totalhits} result found"
+                    displayResult(result)
                 }
             } catch (exception: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, exception.message, Toast.LENGTH_SHORT).show()
+                    toastError(exception.message)
                 }
             }
         }
@@ -174,9 +176,18 @@ class MainActivity : AppCompatActivity() {
             .subscribeOn(Schedulers.io())
             .observeOn(AndroidSchedulers.mainThread())
             .subscribe(
-                { result -> txt_search_result.text = "${result.query.searchinfo.totalhits} result found" },
-                { error -> Toast.makeText(this, error.message, Toast.LENGTH_SHORT).show() }
+                { result -> try { displayResult(result) } catch (e: Exception) { toastError(e.message) } },
+                { error -> toastError(error.message) }
             )
+    }
+
+    private fun displayResult(result: Model.Result) {
+        txt_search_result.text = "${result.query.searchinfo.totalhits} result found"
+        hideKeyboard()
+    }
+
+    private fun toastError(error: String? = null) {
+        Toast.makeText(this, error ?: "Unknown Error", Toast.LENGTH_SHORT).show()
     }
 
     override fun onPause() {
@@ -185,5 +196,13 @@ class MainActivity : AppCompatActivity() {
         dispatcherIoScope.cancel()
         call?.cancel()
         myAsyncTasks?.cancel(true)
+    }
+}
+
+fun Activity.hideKeyboard() {
+    currentFocus?.let {
+        val inputManager: InputMethodManager =
+            getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        inputManager.hideSoftInputFromWindow(it.windowToken, InputMethodManager.HIDE_NOT_ALWAYS)
     }
 }
