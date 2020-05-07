@@ -175,10 +175,9 @@ class MainActivity : AppCompatActivity() {
         disposable = wikiApiServe.hitCountCheckRx("query", "json", "search", searchString)
             .subscribeOn(Schedulers.io())
             .observeOn(AndroidSchedulers.mainThread())
-            .subscribe(
-                { result -> try { displayResult(result) } catch (e: Exception) { toastError(e.message) } },
-                { error -> toastError(error.message) }
-            )
+            .doOnSuccess { result -> displayResult(result) }
+            .doOnError { error -> toastError(error.message) }
+            .subscribe({}, {})
     }
 
     private fun displayResult(result: Model.Result) {
