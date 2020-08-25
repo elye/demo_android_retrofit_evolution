@@ -7,6 +7,9 @@ import android.os.Bundle
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.elyeproj.wikisearchcount.UrlConstant.VALUE_JSON
+import com.elyeproj.wikisearchcount.UrlConstant.VALUE_QUERY
+import com.elyeproj.wikisearchcount.UrlConstant.VALUE_SEARCH
 import io.reactivex.android.schedulers.AndroidSchedulers
 import io.reactivex.disposables.Disposable
 import io.reactivex.schedulers.Schedulers
@@ -22,6 +25,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -97,7 +102,7 @@ class MainActivity : AppCompatActivity() {
     private fun beginSearchExecute(searchString: String) {
         myAsyncTasks = MyAsyncTask({
             call = wikiApiServe.hitCountCheckCall(
-                "query", "json", "search", searchString)
+                VALUE_QUERY, VALUE_JSON, VALUE_SEARCH, searchString)
             call?.let {
                 try {
                     val response = it.execute()
@@ -119,7 +124,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun beginSearchEnqueue(searchString: String) {
-        call = wikiApiServe.hitCountCheckCall("query", "json", "search", searchString)
+        call = wikiApiServe.hitCountCheckCall(VALUE_QUERY, VALUE_JSON, VALUE_SEARCH, searchString)
         call?.enqueue(
             object : Callback<Model.Result> {
                 override fun onFailure(call: Call<Model.Result>, t: Throwable) { toastError(t.message) }
@@ -143,7 +148,7 @@ class MainActivity : AppCompatActivity() {
     private fun beginSearchSuspend(searchString: String) {
         dispatcherIoScope.launch {
             try {
-                val result = wikiApiServe.hitCountCheckSuspend("query", "json", "search", searchString)
+                val result = wikiApiServe.hitCountCheckSuspend(VALUE_QUERY, VALUE_JSON, VALUE_SEARCH, searchString)
                 withContext(Dispatchers.Main) {
                     displayResult(result)
                 }
@@ -156,7 +161,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun beginSearchDefer(searchString: String) {
-        val deferFetch = wikiApiServe.hitCountCheckAsync("query", "json", "search", searchString)
+        val deferFetch = wikiApiServe.hitCountCheckAsync(VALUE_QUERY, VALUE_JSON, VALUE_SEARCH, searchString)
         dispatcherIoScope.launch {
             try {
                 val result = deferFetch.await()
@@ -172,7 +177,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun beginSearchRx(searchString: String) {
-        disposable = wikiApiServe.hitCountCheckRx("query", "json", "search", searchString)
+        disposable = wikiApiServe.hitCountCheckRx(VALUE_QUERY, VALUE_JSON, VALUE_SEARCH, searchString)
             .subscribeOn(Schedulers.io())
             .observeOn(AndroidSchedulers.mainThread())
             .doOnSuccess { result -> displayResult(result) }
