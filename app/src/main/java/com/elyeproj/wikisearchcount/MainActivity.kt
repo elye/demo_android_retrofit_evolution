@@ -7,29 +7,27 @@ import android.os.Bundle
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.elyeproj.wikisearchcount.UrlConstant.BASE_PATH
+import com.elyeproj.wikisearchcount.UrlConstant.BASE_URL
+import com.elyeproj.wikisearchcount.UrlConstant.PARAM_ACTION
+import com.elyeproj.wikisearchcount.UrlConstant.PARAM_FORMAT
+import com.elyeproj.wikisearchcount.UrlConstant.PARAM_LIST
+import com.elyeproj.wikisearchcount.UrlConstant.PARAM_SRSEARCH
 import com.elyeproj.wikisearchcount.UrlConstant.VALUE_JSON
 import com.elyeproj.wikisearchcount.UrlConstant.VALUE_QUERY
 import com.elyeproj.wikisearchcount.UrlConstant.VALUE_SEARCH
+import com.google.gson.Gson
 import io.reactivex.android.schedulers.AndroidSchedulers
 import io.reactivex.disposables.Disposable
 import io.reactivex.schedulers.Schedulers
-import kotlinx.android.synthetic.main.activity_main.btn_search_defer
-import kotlinx.android.synthetic.main.activity_main.btn_search_enqueue
-import kotlinx.android.synthetic.main.activity_main.btn_search_execute
-import kotlinx.android.synthetic.main.activity_main.btn_search_rx
-import kotlinx.android.synthetic.main.activity_main.btn_search_suspend
-import kotlinx.android.synthetic.main.activity_main.edit_search
-import kotlinx.android.synthetic.main.activity_main.txt_search_result
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.android.synthetic.main.activity_main.*
+import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import java.io.IOException
 
 class MainActivity : AppCompatActivity() {
 
@@ -61,6 +59,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        btn_search_okhttp_enqueue.setOnClickListener {
+            if (edit_search.text.toString().isNotEmpty()) {
+                beginOkHttpSearchEnqueue(edit_search.text.toString())
+            }
+        }
+
         btn_search_rx.setOnClickListener {
             if (edit_search.text.toString().isNotEmpty()) {
                 beginSearchRx(edit_search.text.toString())
@@ -81,9 +85,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     class MyAsyncTask(
-        private val doInBackground: () -> MyResult?,
-        private val onPostExecuteSuccess: (result: Model.Result) -> Unit,
-        private val onPostExecuteFailure: (result: String?) -> Unit
+            private val doInBackground: () -> MyResult?,
+            private val onPostExecuteSuccess: (result: Model.Result) -> Unit,
+            private val onPostExecuteFailure: (result: String?) -> Unit
     ) : AsyncTask<String?, Void?, MyAsyncTask.MyResult>() {
 
         data class MyResult(val result: Model.Result? = null, val error: String? = null)
@@ -102,7 +106,7 @@ class MainActivity : AppCompatActivity() {
     private fun beginSearchExecute(searchString: String) {
         myAsyncTasks = MyAsyncTask({
             call = wikiApiServe.hitCountCheckCall(
-                VALUE_QUERY, VALUE_JSON, VALUE_SEARCH, searchString)
+                    VALUE_QUERY, VALUE_JSON, VALUE_SEARCH, searchString)
             call?.let {
                 try {
                     val response = it.execute()
@@ -116,9 +120,16 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) {
                     MyAsyncTask.MyResult(error = e.message)
                 }
-            } },
-            { result -> try { displayResult(result) } catch (e:java.lang.Exception) { toastError(e.message)} },
-            { error -> toastError(error) })
+            }
+        },
+                { result ->
+                    try {
+                        displayResult(result)
+                    } catch (e: java.lang.Exception) {
+                        toastError(e.message)
+                    }
+                },
+                { error -> toastError(error) })
 
         myAsyncTasks?.execute()
     }
@@ -126,23 +137,54 @@ class MainActivity : AppCompatActivity() {
     private fun beginSearchEnqueue(searchString: String) {
         call = wikiApiServe.hitCountCheckCall(VALUE_QUERY, VALUE_JSON, VALUE_SEARCH, searchString)
         call?.enqueue(
-            object : Callback<Model.Result> {
-                override fun onFailure(call: Call<Model.Result>, t: Throwable) { toastError(t.message) }
+                object : Callback<Model.Result> {
+                    override fun onFailure(call: Call<Model.Result>, t: Throwable) {
+                        toastError(t.message)
+                    }
 
-                override fun onResponse(call: Call<Model.Result>, response: Response<Model.Result>) {
-                    if (response.isSuccessful) {
-                        response.body()?.let {
-                            try {
-                                displayResult(it)
-                            } catch (e: Exception) {
-                                toastError(e.message)
-                            }
-                        } ?: toastError()
-                    } else {
-                        toastError("${response.code()}:${response.message()}")
+                    override fun onResponse(call: Call<Model.Result>, response: Response<Model.Result>) {
+                        if (response.isSuccessful) {
+                            response.body()?.let {
+                                try {
+                                    displayResult(it)
+                                } catch (e: Exception) {
+                                    toastError(e.message)
+                                }
+                            } ?: toastError()
+                        } else {
+                            toastError("${response.code()}:${response.message()}")
+                        }
+                    }
+                })
+    }
+
+    private fun beginOkHttpSearchEnqueue(searchString: String) {
+        val client = OkHttpClient.Builder().build()
+        val request = Request.Builder().url("$BASE_URL$BASE_PATH/?" +
+                "$PARAM_ACTION=$VALUE_QUERY&$PARAM_FORMAT=$VALUE_JSON&" +
+                "$PARAM_LIST=$VALUE_SEARCH&$PARAM_SRSEARCH=$searchString").build()
+        client.newCall(request).enqueue(
+                object : okhttp3.Callback {
+                    override fun onFailure(call: okhttp3.Call, e: IOException) {
+                        runOnUiToastError(e.message)
+                    }
+
+                    override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                        if (response.isSuccessful) {
+                            response.body()?.let {
+                                try {
+                                    val result = Gson().fromJson(it.string(), Model.Result::class.java)
+                                    runOnUiDisplayResult(result)
+                                } catch (e: Exception) {
+                                    runOnUiToastError(e.message)
+                                }
+                            } ?: runOnUiToastError()
+                        } else {
+                            runOnUiToastError("${response.code()}:${response.message()}")
+                        }
                     }
                 }
-            })
+        )
     }
 
     private fun beginSearchSuspend(searchString: String) {
@@ -178,11 +220,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun beginSearchRx(searchString: String) {
         disposable = wikiApiServe.hitCountCheckRx(VALUE_QUERY, VALUE_JSON, VALUE_SEARCH, searchString)
-            .subscribeOn(Schedulers.io())
-            .observeOn(AndroidSchedulers.mainThread())
-            .doOnSuccess { result -> displayResult(result) }
-            .doOnError { error -> toastError(error.message) }
-            .subscribe({}, {})
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .doOnSuccess { result -> displayResult(result) }
+                .doOnError { error -> toastError(error.message) }
+                .subscribe({}, {})
     }
 
     private fun displayResult(result: Model.Result) {
@@ -190,8 +232,20 @@ class MainActivity : AppCompatActivity() {
         hideKeyboard()
     }
 
+    private fun runOnUiDisplayResult(result: Model.Result) {
+        runOnUiThread {
+            displayResult(result)
+        }
+    }
+
     private fun toastError(error: String? = null) {
         Toast.makeText(this, error ?: "Unknown Error", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun runOnUiToastError(error: String? = null) {
+        runOnUiThread {
+            toastError(error)
+        }
     }
 
     override fun onPause() {
@@ -206,7 +260,7 @@ class MainActivity : AppCompatActivity() {
 fun Activity.hideKeyboard() {
     currentFocus?.let {
         val inputManager: InputMethodManager =
-            getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         inputManager.hideSoftInputFromWindow(it.windowToken, InputMethodManager.HIDE_NOT_ALWAYS)
     }
 }
